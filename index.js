@@ -1,3 +1,6 @@
+require("dotenv-safe").load();
+var jwt = require('jsonwebtoken');
+
 const express = require('express');
 const app = express();         
 const bodyParser = require('body-parser');
@@ -43,7 +46,6 @@ router.get('/clientes', (req, res) =>{
     execSQLQuery('SELECT * FROM Clientes', res);
 });
 
-
 // Visualizando com filtro
 router.get('/clientes/:id?', (req, res) =>{
     let filter = '';
@@ -62,3 +64,54 @@ router.post('/clientes', (req, res) =>{
     const cpf = req.body.cpf.substring(0,11);
     execSQLQuery(`INSERT INTO Clientes(Nome, CPF) VALUES('${nome}','${cpf}')`, res);
 });
+
+// Atualizando
+router.patch('/clientes/:id', (req, res) =>{
+    const id = parseInt(req.params.id);
+    const nome = req.body.nome.substring(0,150);
+    const cpf = req.body.cpf.substring(0,11);
+    execSQLQuery(`UPDATE Clientes SET Nome='${nome}', CPF='${cpf}' WHERE ID=${id}`, res);
+});
+
+
+// Autenticação
+app.post('/login', (req, res, next) => {
+  if(req.body.user === 'luiz' && req.body.pwd === '123'){
+    //auth ok
+    const id = 1; //esse id viria do banco de dados
+    var token = jwt.sign({ id }, process.env.SECRET, {
+      expiresIn: 300 // expires in 5min
+    });
+    res.status(200).send({ auth: true, token: token });
+  }
+  
+  res.status(500).send('Login inválido!');
+});
+
+app.get('/logout', function(req, res) {
+  res.status(200).send({ auth: false, token: null });
+});
+
+// Verificação do Token
+function verifyJWT(req, res, next){
+  var token = req.headers['x-access-token'];
+  if (!token) return res.status(401).send({ auth: false, message: 'No token provided.' });
+  
+  jwt.verify(token, process.env.SECRET, function(err, decoded) {
+    if (err) return res.status(500).send({ auth: false, message: 'Failed to authenticate token.' });
+    
+    // se tudo estiver ok, salva no request para uso posterior
+    req.userId = decoded.id;
+    next();
+  });
+}
+
+// Proxy request
+app.get('/users', verifyJWT, (req, res, next) => {
+  userServiceProxy(req, res, next);
+})
+
+app.get('/products', verifyJWT, (req, res, next) => {
+  productsServiceProxy(req, res, next);
+});
+
